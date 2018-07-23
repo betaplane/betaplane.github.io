@@ -1,0 +1,27 @@
+---
+title: Using Sphinx-generated HTML documentation on GitHub project pages
+layout: post
+categories: [programming]
+tags: [sphinx, github]
+---
+<p>
+It turns out it's <b>a lot</b> easier to publish <a href="http://www.sphinx-doc.org/en/master/">Sphinx</a> documentation as <a href="https://pages.github.com">GitHub Pages</a> than pretty much all google search results on the topic (at the time of this writing&#x2026;) would have it.
+</p>
+
+<p>
+All you need to do is:
+</p>
+<ol class="org-ol">
+<li><b>Not</b> save your <a href="http://www.sphinx-doc.org/en/master/">Sphinx</a> files in a folder named <code>./docs</code> under your repo-root.</li>
+<li>Change the <code>html</code> target in the <a href="http://www.sphinx-doc.org/en/master/usage/quickstart.html"><code>sphinx-quickstart</code></a>-generated <code>Makefile</code> to build in the <code>./docs</code> folder &#x2014; one of the locations where you can tell <a href="https://github.com">GitHub</a> to look for web site material. If, say, you told <a href="http://www.sphinx-doc.org/en/master/usage/quickstart.html"><code>sphinx-quickstart</code></a> to have your files in a subdirectory of your repo root, the corresponding lines would look like this:</li>
+</ol>
+{% highlight make %}{% raw %}
+.PHONY: html
+html:
+	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) ../docs
+	@echo
+	@echo "Build finished. The HTML pages are in ../docs."
+{% endraw %}{% endhighlight %}
+<p>
+You can now generate your documentation as always and need to synchronize only one branch with <a href="https://github.com">GitHub</a> - no need for <a href="https://gist.github.com/brantfaircloth/791759">shell scripts</a> to be called by <code>make</code> or messing with a separate <a href="https://daler.github.io/sphinxdoc-test/includeme.html">gh-pages</a> branch. (The branch technique is presumably most useful if you write your documentation by hand, in which case you will simply switch between code and documentation branches, but not for in-code documentation as with <a href="http://www.sphinx-doc.org/en/stable/ext/autodoc.html">autodoc</a>.) 
+</p>

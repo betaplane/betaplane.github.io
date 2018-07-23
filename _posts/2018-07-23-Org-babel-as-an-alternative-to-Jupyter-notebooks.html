@@ -1,0 +1,144 @@
+---
+title: Org-babel as an alternative to Jupyter notebooks
+layout: post
+categories: [programming]
+tags: [python, jupyter, emacs, orgmode]
+---
+<p>
+<b>Foldable</b> hierarchical outlines<sup><a id="fnr.1" class="footref" href="#fn.1">1</a></sup> must, surely, be one of the building blocks of the universe. I wasn't particularly keen on the notebook format when I was still using <i>Mathematica</i> (which <b>does</b> have foldable headlines), preferring the <i>Matlab</i>-style popping up of windows which I could arrange next to each other on the screen. But I started adopting the <a href="http://jupyter.org">Jupyter notebooks</a> for python when I realized the Quixotism of my attempts to give figures names which would allow the subsequent reconstruction of their meaning. (I have gone so far as to save additional information in file metadata.)
+</p>
+
+<p>
+The notebooks do have a lot going for them, beyond the obvious prettiness and out-of-the-box usability &#x2014; for me, before all the fact that if I leave a notebook server running at work, I can just dig an ssh tunnel from home and fire up my browser. Nonetheless, they <b>don't fold</b> and therefore stubbornly resist the imposition of higher order at least in my hands. Sure, it would probably be relatively easy to implement some folding plugin for the browser interface, and I bet someone will at some point or other. But then, I really like <a href="http://orgmode.org">org-mode</a> anyway, in principle at least, and I keep hoping that with increased use, there will come a inflection point in my ability to tame it. It's another quest, for sure, and it might turn out quixotic as well &#x2014; but for now, I decided to write up my tales from the rabbit-hole 
+of <code>find-function</code> calls, for the benefit of my fellow org-curious.
+</p>
+
+<div id="outline-container-org5dd013e" class="outline-2">
+<h2 id="org5dd013e">Saving figures directly in python with matplotlib</h2>
+<div class="outline-text-2" id="text-org5dd013e">
+<p>
+<a href="https://github.com/gregsexton/ob-ipython">Ob-ipython</a> implements, as of this writing, a few nice features such as auto-completing through <a href="https://company-mode.github.io">company-mode</a> (asking the <a href="https://ipython.readthedocs.io/en/stable/index.html">ipython</a> kernel for completion suggestions). It is the <a href="http://org-babel.readthedocs.io/en/latest/eval/">org-babel</a> python backend I'm test-driving, but I don't think there's anything in the workflow described below that wouldn't work with the regular ob-python backend.
+</p>
+
+<p>
+One aspect of how images are handled in <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> is that the <a href="https://ipython.readthedocs.io/en/stable/interactive/magics.html#magic-matplotlib"><code>%matplotlib inline</code></a> backend is used to grab image data directly from the <a href="https://ipython.readthedocs.io/en/stable/index.html">ipython</a> kernel, which is then written to file from within Emacs; finally, a link to the file is inserted and <code>org-display-inline-images</code> (which generates image overlays from links) is called via the <code>org-babel-after-execute-hook</code>. Since I'm way more familiar with python than with elisp, I prefer the idea of controlling the process of writing out the image file in python directly. The following function allows for a different insertion procedure, which has the additional advantage that I can, if I so desire, use an interactive <a href="https://matplotlib.org/tutorials/introductory/usage.html#backends">matplotlib backend</a> to pop up the figure in a window first.
+</p>
+
+<p>
+The following function saves a previously generated figure using the <a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.savefig.html#matplotlib-pyplot-savefig">savefig</a> command (assuming <a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.html">matplotlib.pyplot</a> has been imported <code>as plt</code>), and uses the function <code>org-babel-insert-result</code> to append a <code>#+RESULTS:</code> block after the current <i>src block</i>, containing a link to the generated file. A call to <code>org-display-inline-images</code> at the end replaces links with overlay images:
+</p>
+
+{% highlight scheme %}{% raw %}(defun nandu-append-figure ()
+  "Save current matplotlib figure to file and append link as result.
+
+Execute a matplotlib.pyplot.savefig on the current figure in the
+`ob-ipython-resources-dir' directory and append the link/overlay
+to the current src block. The file will be named according to the
+:savefig header param, or randomly if that isn't present.
+:savefig should either be given a full filename with
+extension (e. g. \"image.png\"), or just the extension (e. g.
+\"png\"), in which case a random name is created also. The
+:results header of the src block is handed over to
+`org-babel-insert-result'. An optional :style header can give the
+name of a style with which to print the figure to hardcopy."
+
+  (interactive)
+  (let* ((babel-args '((:session . nil)))
+         (info (or (nth 2 (org-babel-get-src-block-info))
+                   (org-babel-parse-header-arguments
+                    (org-element-property :end-header (org-element-at-point)))))
+         (res-dir (expand-file-name (file-name-sans-extension (buffer-name)) ob-ipython-resources-dir))
+;; default figure format
+         (ext "png")
+         (path nil)
+;; merge any result-params from the src block header with these
+         (result-params '("replace" "raw")))
+
+    (catch :im_format
+      (when-let ((file_name (alist-get :savefig info)))
+        (setq ext (split-string file_name "\\."))
+        (if (cdr ext)
+            (progn
+              (setq path (expand-file-name file_name res-dir))
+              (throw :im_format t))
+          (setq ext (car ext))))                                                       ;; when-let
+      (setq path (concat (make-temp-name (file-name-as-directory res-dir)) "." ext)))  ;; catch
+;; if plt.close() isn't called, the figures accumulate weirdness over time
+
+    (let ((cmd (format "plt.gcf().savefig('%s'); plt.close()" path)))
+;; wrap call in a style context if :style is given
+;; the style is looked for first in nandu-mpl-styles-directory, then among the standard mpl styles
+      (when-let* ((style (alist-get :style info))
+                  (mplstyle (or (car (directory-files nandu-mpl-styles-directory t style)) style)))
+        (setq cmd (format "with plt.style.context('%s'):\n\t%s" mplstyle cmd)))
+      (org-babel-execute:ipython cmd babel-args))
+
+    (when-let ((results (alist-get :results info)))
+      (setq result-params (cl-union (split-string results) result-params)))
+    (org-babel-insert-result (format "[[file:%s]]" path) result-params)
+    (org-display-inline-images))){% endraw %}{% endhighlight %}
+<p>
+There are a few points to note:
+</p>
+<ol class="org-ol">
+<li>I prefer a finder granularity to where the resulting image files get saved: underneath the <code>ob-ipython-resources-dir</code>, I add an additional level of directories, on for each <i>.org</i> file which contains images. The name of the subdirectories is the same as that of the files (without the <i>.org</i>) to which they correspond.</li>
+<li><p>
+Instead of hijacking the <code>:ipyfile</code> keyword, I use my own to denote the filename: <code>:savefig</code>. Another advantage of this python-side approach is that I can use the filename to signal to <a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.savefig.html#matplotlib-pyplot-savefig">savefig</a> which format I want the file to be saved in. This is useful in case some figures are better suited to a bitmap format and others to a vector one. <b>There is no need to choose an image format via <code>%config InlineBackend.figure_format</code>.</b> Since it is hard to find the documentation for the IPython / Jupyter options, if you stumble across this post looking for them &#x2014; there are two valid forms:
+</p>
+{% highlight python %}{% raw %}
+InlineBackend.figure_format = 'png' # or any other format, of course
+InlineBackend.figure_formats = ['png', 'svg']
+{% endraw %}{% endhighlight %}
+<p>
+These can either be set via the <code>%config</code> magic on a per-file basis or in some configuration file for whatever Jupyter frontend you use.
+</p></li>
+<li>The code above parses the <i>src block</i> header for an additional keyword, <code>:style</code>, which, if given, leads to the application of a particular style sheet. I look first in a particular directory for a matching style sheet (<code>nandu-mpl-styles-directory</code><sup><a id="fnr.2" class="footref" href="#fn.2">2</a></sup>), then among the default <a href="https://matplotlib.org/gallery/style_sheets/style_sheets_reference.html">matplotlib styles</a>.</li>
+</ol>
+
+<p>
+<b>The resulting workflow is hence as follows:</b>
+</p>
+<ol class="org-ol">
+<li>Execute the <i>src block</i> with <i>C-c C-c</i> or <i>,,</i> (in <a href="http://spacemacs.org">Spacemacs</a>).</li>
+<li>Execute the above function, which I for example have bound to <i>s-&lt;return&gt;</i> (I'm on a mac and use the apple key as <i>super</i>).</li>
+</ol>
+
+<p>
+Note that if step 1) produces regular string output, it will be displayed by the usual mechanism, but step 2) will replace it with the image link and overlay.
+</p>
+
+<p>
+If no interactive window pop-up is desired, one can simply select an apropriate <a href="https://matplotlib.org/tutorials/introductory/usage.html#backends">backend</a> via the <a href="https://matplotlib.org/api/matplotlib_configuration_api.html#matplotlib.use"><code>matplotlib.use()</code></a> function. This can be handy as well if it turns out that the interactivte figure canvas is distorted and one wants to re-plot the figure onto a non-interactive canvas (use <a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.switch_backend.html#matplotlib.pyplot.switch_backend"><code>pyplot.switch_backends()</code></a> in that case). Of course, it would also be possible to generally decide on a non-interactive backend and bind a function combining the two steps to the desired key, thereby replicating the usual <a href="http://org-babel.readthedocs.io/en/latest/eval/">org-babel</a> workflow.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org4bf42f5" class="outline-2">
+<h2 id="org4bf42f5">A note on regular ob-ipython result blocks</h2>
+<div class="outline-text-2" id="text-org4bf42f5">
+<p>
+At the time of this writing, <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> inserts an <a href="https://ipython.readthedocs.io/en/stable/index.html">ipython</a>-like <code>Out[...]</code> as a comment before the returned results. Using a separate function, as suggested above, circumnavigates  all output-specific code from the <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> side. However, for regular, non-image output the fact that it is a <i>comment</i> that is inserted seems to interrupt org's parsing of the <code>#+RESULTS:</code> drawer, which is why I override the <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> function <code>ob-ipython--process-response</code> currently with my own with the offending line 
+</p>
+<pre class="example">
+(format "# Out[%d]:\n" (cdr (assoc :exec-count ret)))
+</pre>
+<p>
+removed. Personally I also prefer my image output <b>not</b> to live in <a href="https://orgmode.org/manual/Drawers.html#Drawers">drawers</a> in the way that <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> does it, since those are always closed unless explicitly opened.
+</p>
+</div>
+</div>
+<div id="footnotes">
+<h2 class="footnotes">Footnotes: </h2>
+<div id="text-footnotes">
+
+<div class="footdef"><sup><a id="fn.1" class="footnum" href="#fnr.1">1</a></sup> <div class="footpara"><p class="footpara">
+One of the main features of <a href="http://orgmode.org">org-mode</a> (and <a href="https://www.omnigroup.com/omnioutliner">OmniOutliner</a>, to be fair, which got me hooked onto them in the first place at times when it was still bundled for free with OSX. But nowadays I need cross-platform tools and org-mode is more powerful, more hackable, and more free.)
+</p></div></div>
+
+<div class="footdef"><sup><a id="fn.2" class="footnum" href="#fnr.2">2</a></sup> <div class="footpara"><p class="footpara">
+Nandu is the name of my personal <a href="http://spacemacs.org">spacemacs</a> configuration layer, from which the code is grabbed, so just ignore the name.
+</p></div></div>
+
+
+</div>
+</div>
