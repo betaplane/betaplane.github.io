@@ -13,9 +13,9 @@ The notebooks do have a lot going for them, beyond the obvious prettiness and ou
 of <code>find-function</code> calls, for the benefit of my fellow org-curious.
 </p>
 
-<div id="outline-container-org5dd013e" class="outline-2">
-<h2 id="org5dd013e">Saving figures directly in python with matplotlib</h2>
-<div class="outline-text-2" id="text-org5dd013e">
+<div id="outline-container-org830707c" class="outline-2">
+<h2 id="org830707c">Saving figures directly in python with matplotlib</h2>
+<div class="outline-text-2" id="text-org830707c">
 <p>
 <a href="https://github.com/gregsexton/ob-ipython">Ob-ipython</a> implements, as of this writing, a few nice features such as auto-completing through <a href="https://company-mode.github.io">company-mode</a> (asking the <a href="https://ipython.readthedocs.io/en/stable/index.html">ipython</a> kernel for completion suggestions). It is the <a href="http://org-babel.readthedocs.io/en/latest/eval/">org-babel</a> python backend I'm test-driving, but I don't think there's anything in the workflow described below that wouldn't work with the regular ob-python backend.
 </p>
@@ -110,12 +110,16 @@ Note that if step 1) produces regular string output, it will be displayed by the
 <p>
 If no interactive window pop-up is desired, one can simply select an apropriate <a href="https://matplotlib.org/tutorials/introductory/usage.html#backends">backend</a> via the <a href="https://matplotlib.org/api/matplotlib_configuration_api.html#matplotlib.use"><code>matplotlib.use()</code></a> function. This can be handy as well if it turns out that the interactivte figure canvas is distorted and one wants to re-plot the figure onto a non-interactive canvas (use <a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.switch_backend.html#matplotlib.pyplot.switch_backend"><code>pyplot.switch_backends()</code></a> in that case). Of course, it would also be possible to generally decide on a non-interactive backend and bind a function combining the two steps to the desired key, thereby replicating the usual <a href="http://org-babel.readthedocs.io/en/latest/eval/">org-babel</a> workflow.
 </p>
+
+<p>
+There is, of course, one immediately obvious drawback, at least if you're on a computer with a high-resolution screen: The resolution of the images displayed inside Emacs doesn't come anywhere close to what it is in a browser&#x2026;
+</p>
 </div>
 </div>
 
-<div id="outline-container-org4bf42f5" class="outline-2">
-<h2 id="org4bf42f5">A note on regular ob-ipython result blocks</h2>
-<div class="outline-text-2" id="text-org4bf42f5">
+<div id="outline-container-orgb0de747" class="outline-2">
+<h2 id="orgb0de747">A note on regular ob-ipython result blocks</h2>
+<div class="outline-text-2" id="text-orgb0de747">
 <p>
 At the time of this writing, <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> inserts an <a href="https://ipython.readthedocs.io/en/stable/index.html">ipython</a>-like <code>Out[...]</code> as a comment before the returned results. Using a separate function, as suggested above, circumnavigates  all output-specific code from the <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> side. However, for regular, non-image output the fact that it is a <i>comment</i> that is inserted seems to interrupt org's parsing of the <code>#+RESULTS:</code> drawer, which is why I override the <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> function <code>ob-ipython--process-response</code> currently with my own with the offending line 
 </p>
