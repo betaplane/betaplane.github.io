@@ -1,0 +1,60 @@
+---
+title: Displaying Pandas DataFrames as org-mode tables
+layout: post
+categories: [programming]
+tags: [python, pandas, emacs, orgmode]
+---
+<p>
+The <a href="https://github.com/gregbanks/python-tabulate">tabulate</a> package includes formatting of pandas dataframes as org-mode tables, except it appears not to do it correctly (<code>-+-</code> separator markup between header row(s) and table body instead of <code>-|-</code>). While that could be relatively easily corrected, tabulate also doesn't do anything in particular for pandas' <a href="https://pandas.pydata.org/pandas-docs/stable/advanced.html">MultiIndexes</a> either. Here's some code that can display dataframes with simple or MultiIndexes in a relatively pleasing way:
+</p>
+
+{% highlight python %}{% raw %}
+from IPython.display import publish_display_data
+from pandas import MultiIndex
+
+def table(df):
+    """Format a small :class:`~pandas.DataFrame` as an `org-mode table<https://orgmode.org/manual/Tables.html>`_.
+
+    :param df: input DataFrame
+    :type df: :class:`~pandas.DataFrame`
+    :returns: org-mode table as IPython display string with 'text/org' MIME type
+
+    """
+    def index(idx):
+        if isinstance(idx, MultiIndex):
+            x = list(idx)
+            return [x[0]] +[[' ' if x[i][j] == z else z for j, z in enumerate(y)]
+                            for i, y in enumerate(x[1:])]
+        else:
+            return [[i] for i in idx]
+
+    idx = index(df.index)
+    cols = index(df.columns)
+    M = df.as_matrix()
+    s = '|\n|'.join('|'.join(' ' for _ in range(len(idx[0]))) + '|' + \
+                          '|'.join(c[i] for c in cols) for i in range(len(cols[0]))) + \
+        '|\n|' + '|'.join('-' for _ in range(len(idx[0]) + len(M[0]))) + '|\n|' + \
+        '|\n|'.join('|'.join(str(i) for j in z for i in j) for z in zip(idx, M))
+    return publish_display_data({'text/org': '|' + s + '|'})
+{% endraw %}{% endhighlight %}
+
+<p>
+You can <a href="https://github.com/betaplane/nandu/raw/master/pandas2org.py">download this as a file</a> from my github repo. The call to <a href="https://ipython.readthedocs.io/en/stable/index.html">IPython's</a> <code>publish_display_data</code> attaches the MIME type 'text/org' to the returned string so that <a href="https://github.com/gregsexton/ob-ipython">ob-ipython</a> displays it <i>as is</i>. The result is a regular <a href="https://orgmode.org/manual/Tables.html">org-mode table</a> and not a <a href="https://www.gnu.org/software/emacs/manual/html_node/emacs/Text-Based-Tables.html">table.el</a> one, so the index/header cells of MultiIndexes aren't merged according to the hierarchy but spread out over as many cells as necessary (to remain maximally compatible with org mode):
+</p>
+
+{% highlight python %}{% raw %}
+#+begin_src ipython :results raw :session
+  import pandas as pd
+  from pandas2org import table
+
+  idx = pd.MultiIndex.from_product((['one'], ['two', 'three']))
+  table(pd.DataFrame([[1, 2], [3, 4]], index=idx, columns=idx))
+#+end_src
+
+#+RESULTS:
+|     |       | one |       |
+|     |       | two | three |
+|-----+-------+-----+-------|
+| one | two   |   1 |     2 |
+|     | three |   3 |     4 |
+{% endraw %}{% endhighlight %}
